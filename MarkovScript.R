@@ -19,6 +19,7 @@ library(SMM)
 library(rstan)
 library(diagram)
 library(bayestestR)
+library(viridis)
 
 
 dat<-read.csv("EthogramMantaDroneFootage.csv",header = TRUE) ###Data must be distributed in equal intervals
@@ -59,10 +60,12 @@ dat%>%
 
 #Number of ethograms per individual
 
-dat%>%
+IndivEthoTable<-dat%>%
   group_by(Individual)%>%                          #Group by individual
   summarise(Ethograms=length(unique(MantaID)))%>%  #Get unique ethograms
   print(n = 30)                                    #visualize whole table
+
+print(IndivEthoTable,n=30)
 
 dat_check<-dat #duplicate for safe editing
 
@@ -97,26 +100,33 @@ datsum_uncorrected<-dat %>%               #create object  from data
             Behaviors=length(unique(Behavior)) #Number of unique behaviors
             )
 #you can check individual behaviors like this
-length(datsum_uncorrected$Behavior[datsum_uncorrected$Behavior=="Static"])
+length(datsum_uncorrected$Behavior[datsum_uncorrected$Behavior=="Resting"])
 
 
 # Define transition Probability matrices ----------------------------------
 
 
 #Define behavior states 
-unique(dat$Behavior) #check names in file
+
+names(dat)
+unique(dat$Behavior) #check behavior names in file
+
 
 #Mutate to rename grouped behavior states
+
 dat <- dat %>%
   mutate(States = recode(Behavior, 
-                           "Directional Swimming" = "Traveling",
-                           "Static" = "Traveling",
-                           "CourseChange" = "Traveling",
+                           "Directional Swimming" = "Neutral",
+                           "Resting" = "Neutral",
+                           "CourseChange" = "Neutral",
                            "Feeding?" = "Feeding",
                            "Feeding" = "Feeding",
                            "Acceleration" = "Avoidance",
                            "Avoidance" = "Avoidance"))
-#Data Exploration
+
+# Data Exploration --------------------------------------------------------
+
+
 
 #Unique Ethograms
 length(unique(dat$MantaID))
@@ -132,8 +142,620 @@ print(datsum)
 
 
 length(datsum$Divers[datsum$Divers==0]) #Number of ethograms without divers
-
 length(datsum$Divers[datsum$Divers>0]) #Ethograms with divers
+
+
+#Add second length by ethogram per behaviors and per states
+
+dat_states<-dat %>% group_by(MantaID)%>%           #Group by states
+  mutate(Length_seconds = max(Time_seconds))       #Add clip length
+
+
+dat_behavior<-dat %>% group_by(MantaID)%>%           #Group by states
+  mutate(Length_seconds = max(Time_seconds))       #Add clip length
+
+
+dat_behavior<-dat_behavior%>% 
+  group_by(MantaID, Behavior)%>%                     #Group by Ethogram-behavior
+  summarise(Individual=first(Individual),          #Keep Indiciduals
+            Length_behavior=length(Time_seconds),     #Ethogram-behavior length
+            Divers=max(Divers),                    #Unique behaviors
+            Length_seconds=max(Length_seconds),    #keep total clip length
+            Per_behavior=Length_behavior/Length_seconds  #Percentage duration behavior
+  )
+
+
+
+#add 0 values to unnobserved behaviors
+dat_behavior<-dat_behavior%>%ungroup() %>%                    #ungroup
+  complete(                                               #complete function
+    MantaID, Behavior , #by ethogram and state
+    fill = list(Per_behavior = 0))%>%
+  group_by(MantaID)%>%                                    #add ethogram metadata to filled lines        
+  mutate(                                                    
+    Length_seconds = first(Length_seconds,na_rm = T),     # Fill missing Length_seconds
+    Individual = first(Individual,na_rm=T),                       # Fill Individual
+    Divers = first(Divers,na_rm=T))                       # Fill Divers
+
+
+dat_states<-dat_states%>% 
+  group_by(MantaID, States)%>%                     #Group by Ethogram-state
+  summarise(Individual=first(Individual),          #Keep Indiciduals
+            Length_state=length(Time_seconds),     #Ethogram-behavior length
+            Divers=max(Divers),                    #Unique behaviors
+            Length_seconds=max(Length_seconds),    #keep total clip length
+            Per_state=Length_state/Length_seconds  #Percentage duration state
+  )
+
+#add 0 values to unnobserved states
+dat_states<-dat_states%>%ungroup() %>%                    #ungroup
+  complete(                                               #complete function
+  MantaID, States = c("Avoidance", "Feeding", "Neutral"), #by ethogram and state
+  fill = list(Per_state = 0))%>%
+  group_by(MantaID)%>%                                    #add ethogram metadata to filled lines        
+  mutate(                                                    
+    Length_seconds = first(Length_seconds,na_rm = T),     # Fill missing Length_seconds
+    Individual = first(Individual,na_rm=T),                       # Fill Individual
+    Divers = first(Divers,na_rm=T))                       # Fill Divers
+
+# Basic Plots ----------------------------------------------------------
+
+
+#Average time per behavior
+
+
+average_behavior <- dat_behavior
+average_behavior$Divers[average_behavior$Divers>1] <-1
+
+average_behavior <- average_behavior %>%
+  group_by(Behavior,Divers) %>%
+  summarise(Average_Percentage = mean(Per_behavior, na.rm = TRUE),
+            SD_Percentage = sd(Per_behavior, na.rm = TRUE))
+
+# Create the bar plot
+ggplot(average_behavior, aes(x = Behavior, y = Average_Percentage, fill = Behavior)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(title = "Average Percentage of Time Spent at Each behavior",
+       x = "behavior",
+       y = "Average Percentage of Time Spent",
+       fill = "behavior") +
+  theme_minimal() +
+  scale_fill_viridis_d(option="mako") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  facet_wrap(~ Divers, scales = "free_y", ncol=1)
+
+
+# Create the boxplot
+
+dat_behavior_bx<-dat_behavior
+
+dat_behavior_bx$Divers[dat_behavior_bx$Divers>1] <-1
+
+Per_behav_boxplot<-ggplot(dat_behavior_bx, aes(x = Behavior, y = Per_behavior, fill = Behavior)) +
+  geom_boxplot() +  # Add boxplot with custom styling
+  labs(
+    title = "Average Percentage of Time Spent at Each Behavior",
+    x = "Behavior",
+    y = "Average Percentage of Time Spent",
+    fill = "Behavior"
+  ) +
+  theme_minimal() +
+  scale_fill_viridis_d(option = "mako") +  # Use the same color palette
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  # Style the title
+    legend.position = "none"  # Remove redundant legend
+  ) +
+  facet_wrap(~ Divers, scales = "free_y", ncol = 1,labeller = as_labeller(c(`0` = "Absence", `1` = "Presence")))  # Facet by Divers
+
+print(Per_behav_boxplot)
+
+ggsave("PercentBehaviorBoxplot.jpg", plot = Per_behav_boxplot, width = 8, height = 6, dpi = 300)
+
+
+
+# Signifficance no diver
+aov_behav_Nodiver <- aov(Per_behavior ~ Behavior, data = dat_behavior_bx[dat_behavior_bx$Divers==0,])
+summary(aov_behav_Nodiver)
+
+TukeyHSD(aov_behav_Nodiver,"Behavior")
+
+# Signifficance with diver
+aov_behav_Diver <- aov(Per_behavior ~ Behavior, data = dat_behavior_bx[dat_behavior_bx$Divers==1,])
+summary(aov_behav_Diver)
+
+TukeyHSD(aov_behav_Diver,"Behavior")
+
+
+## Percentage at each state ------------------------------------------------
+
+
+
+average_state <- dat_states
+average_state$Divers[average_state$Divers>1] <-1
+
+average_state <- average_state %>%
+  group_by(States,Divers) %>%
+  summarise(Average_Percentage = mean(Per_state, na.rm = TRUE),
+            SD_Percentage = sd(Per_state, na.rm = TRUE))
+
+# Create the bar plot
+ggplot(average_state, aes(x = States, y = Average_Percentage, fill = States)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(title = "Average Percentage of Time Spent at Each State",
+       x = "States",
+       y = "Average Percentage of Time Spent",
+       fill = "States") +
+  theme_minimal() +
+  scale_fill_viridis_d(option = "mako")  + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  facet_wrap(~ Divers, scales = "free_y")
+
+
+
+# Create the pie chart
+Pie_State<-ggplot(average_state, aes(x = "", y = Average_Percentage, fill = States)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +  # Add white borders for separation
+  coord_polar("y", start = 0) +  # Convert to pie chart
+  scale_fill_viridis_d(option = "mako") +   # Custom colors
+  labs(
+    title = "Average State Distribution",
+    fill = "States"
+  ) +
+  theme_void() +  # Clean layout by removing background elements
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  # Center and style the title
+    legend.position = "right",  # Position the legend
+    legend.title = element_text(face = "bold")  # Bold legend title
+  ) +
+  facet_wrap(~ Divers, scales = "free_y", ncol = 2,labeller = as_labeller(c(`0` = "Absence", `1` = "Presence")))  # Facet by Divers
+
+print(Pie_State)
+
+ggsave("Pie_State.jpg", plot = Pie_State, width = 8, height = 6, dpi = 300)
+
+
+# Filter data for Divers > 0
+average_state_presence <- average_state %>% dplyr::filter(Divers > 0)
+
+# Create pie chart for Diver Presence
+ggplot(average_state_presence, aes(x = "", y = Average_Percentage, fill = States)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +  # Add white borders for separation
+  coord_polar("y", start = 0) +  # Convert to pie chart
+  scale_fill_viridis_d(option = "mako") + # Custom colors
+  labs(
+    title = "State Distribution with Divers",
+    fill = "States"
+  ) +
+  theme_void() +  # Clean layout by removing background elements
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  # Center and style the title
+    legend.position = "right",  # Position the legend
+    legend.title = element_text(face = "bold")  # Bold legend title
+  )
+
+
+# Filter data for Divers = 0
+average_state_absence <- average_state %>% dplyr::filter(Divers == 0)
+
+# Create pie chart for Diver Absence
+ggplot(average_state_absence, aes(x = "", y = Average_Percentage, fill = States)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +  # Add white borders for separation
+  coord_polar("y", start = 0) +  # Convert to pie chart
+  scale_fill_viridis_d(option = "mako") +   # Custom colors
+  labs(
+    title = "State Distribution without Divers",
+    fill = "States"
+  ) +
+  theme_void() +  # Clean layout by removing background elements
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  # Center and style the title
+    legend.position = "right",  # Position the legend
+    legend.title = element_text(face = "bold")  # Bold legend title
+  )
+
+# Create the boxplot
+
+dat_states_bx<-dat_states
+dat_states_bx$Divers[dat_states_bx$Divers>1] <-1
+
+Per_State_Box<-ggplot(dat_states_bx, aes(x = States, y = Per_state, fill = States)) +
+  geom_boxplot() +  # Add boxplot with custom styling
+  labs(
+    title = "Average Percentage of Time Spent at Each States",
+    x = "States",
+    y = "Average Percentage of Time Spent",
+    fill = "states"
+  ) +
+  theme_minimal() +
+  scale_fill_viridis_d(option = "mako") +  # Use the same color palette
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  # Style the title
+    legend.position = "none"  # Remove redundant legend
+  ) +
+  facet_wrap(~ Divers, scales = "free_y", ncol = 1,labeller = as_labeller(c(`0` = "Absence", `1` = "Presence")))  # Facet by Divers
+
+print(Per_State_Box)
+
+ggsave("PercentStateBoxplot.jpg", plot = Per_State_Box, width = 8, height = 6, dpi = 300)
+
+
+# Signifficance no diver
+aov_states_Nodiver <- aov(Per_state ~ States, data = dat_states_bx[dat_states_bx$Divers==0,])
+summary(aov_behav_Nodiver)
+
+TukeyHSD(aov_states_Nodiver,"States")
+
+# Signifficance with diver
+aov_states_Diver <- aov(Per_state ~ States, data = dat_states_bx[dat_states_bx$Divers==1,])
+summary(aov_behav_Diver)
+
+TukeyHSD(aov_states_Diver,"States")
+
+
+
+
+## Individual analysis -----------------------------------------------------
+
+
+
+# Create the box plot only with divers
+
+dat_divers_box<-dat_states[dat_states$Divers>0,]
+#dat_divers_box<-dat_states[dat_states$Divers<1,] #this gives you the results without divers
+
+dat_divers_box<-dat_divers_box[!is.na(dat_divers_box$Individual),]#remove unidd clips
+
+dat_divers_box<-dat_divers_box %>%  #Append number of ethograms by individual
+  left_join(IndivEthoTable, by = "Individual")
+
+#Keep only mantas with more than 2 clips
+dat_divers_box<-dat_divers_box[dat_divers_box$Ethograms>2,]
+
+
+dat_divers_box$Individual<-as.factor(dat_divers_box$Individual)
+
+Indv_Divers<-ggplot(dat_divers_box, aes(x = Individual, y = Per_state, fill = States)) +
+  geom_boxplot() +
+  facet_wrap(~ States, scales = "free_y", ncol=1) +
+  labs(title = "Percentage of Time Spent at Each State per Individual Manta",
+       x = "Manta ID",
+       y = "Proportion of Time Spent in Behavior State",
+       fill = "States") +
+  theme_minimal() +
+  scale_fill_viridis_d(option = "mako") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+print(Indv_Divers)
+
+ggsave("Individual_Manta_Divers_Boxplot.jpg", plot = Indv_Divers, width = 8, height = 6, dpi = 300)
+
+
+#test signiffice Avoidance
+summary(aov(Per_state ~ Individual, data = dat_divers_box[dat_divers_box$States=="Avoidance",]))
+TukeyHSD(aov(Per_state ~ Individual, data = dat_divers_box[dat_divers_box$States=="Avoidance",]))
+
+#test signiffice Feeding
+summary(aov(Per_state ~ Individual, data = dat_divers_box[dat_divers_box$States=="Feeding",]))
+TukeyHSD(aov(Per_state ~ Individual, data = dat_divers_box[dat_divers_box$States=="Feeding",]))
+
+
+#test signiffice Neutral
+summary(aov(Per_state ~ Individual, data = dat_divers_box[dat_divers_box$States=="Neutral",]))
+TukeyHSD(aov(Per_state ~ Individual, data = dat_divers_box[dat_divers_box$States=="Neutral",]))
+
+
+## Cephalic fins -----------------------------------------------------------
+
+dat_lobes<-dat %>% group_by(MantaID)%>%           #Group by states
+  mutate(Length_seconds = max(Time_seconds))
+
+
+dat_lobes<-dat_lobes%>% group_by(MantaID,Divers,C.fins)%>%
+  summarise(sec_lobe=n(),per_lobe=(sec_lobe/max(Length_seconds)))%>%
+  ungroup() %>%                                          #ungroup
+  complete(                                               #complete function
+    MantaID, C.fins ,                     #by groups
+    fill = list(per_lobe = 0))%>%
+  group_by(MantaID)%>%                                    #add ethogram metadata to filled lines        
+  mutate(                                                    
+    Divers = first(Divers,na_rm=T)) 
+
+
+dat_lobes_edit<-dat_lobes[dat_lobes$C.fins!="Unknown",]
+dat_lobes_edit$Divers[dat_lobes_edit$Divers>1]<-1
+
+c_fins_box<-ggplot(dat_lobes_edit, aes(x = C.fins, y = per_lobe, fill = C.fins)) +
+  geom_boxplot() +  # Add boxplot with custom styling
+  labs(
+    title = "Proportion of Time in Behavior State",
+    x = "Cephalic Fins Position",
+    y = "Proportion of Time in Behavior State",
+    fill = "Cephalic Fins"
+  ) +
+  theme_minimal() +
+  scale_fill_viridis_d(option = "mako") +  # Use the same color palette
+  theme(
+    text=element_text(size=30),
+    axis.text.x = element_text(angle = 0, hjust = 0.5),  # Rotate x-axis labels
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  # Style the title
+    legend.position = "none"  # Remove redundant legend
+  ) +
+  facet_wrap(~ Divers, scales = "free_y", ncol = 1,labeller = as_labeller(c(`0` = "Without Divers", `1` = "With Divers")))  # Facet by Divers
+
+print(c_fins_box)
+
+ggsave("c_fins_Boxplot.jpg", plot = c_fins_box, width = 8, height = 6, dpi = 300)
+
+
+# Differences with/wo divers
+aov_cephalic <- aov(per_lobe ~ as.factor(Divers), data = dat_lobes_edit)
+summary(aov_cephalic_divers)
+
+aov_cephalic_divers <- aov(per_lobe ~ C.fins, data = dat_lobes_edit[dat_lobes_edit$Divers>0,])
+summary(aov_cephalic_divers)
+
+
+TukeyHSD(aov_cephalic_divers,"C.fins")
+
+aov_cephalic_nodivers <- aov(per_lobe ~ C.fins, data = dat_lobes_edit[dat_lobes_edit$Divers==0,])
+summary(aov_cephalic_nodivers)
+
+
+TukeyHSD(aov_cephalic_nodivers,"C.fins")
+
+
+#No feeding
+
+dat_lobes_nf<-dat[dat$States!="Feeding",] 
+
+
+dat_lobes_nf<-dat_lobes_nf%>% group_by(MantaID)%>%           #Group by states
+  mutate(Length_seconds = max(Time_seconds))
+
+dat_lobes_nf<-dat_lobes_nf%>% group_by(MantaID,Divers,C.fins)%>%
+  summarise(sec_lobe=n(),per_lobe=(sec_lobe/max(Length_seconds)))%>%
+  ungroup() %>%                                          #ungroup
+  complete(                                               #complete function
+    MantaID, C.fins ,                     #by groups
+    fill = list(per_lobe = 0))%>%
+  group_by(MantaID)%>%                                    #add ethogram metadata to filled lines        
+  mutate(                                                    
+    Divers = first(Divers,na_rm=T)) 
+
+
+dat_lobes_nf<-dat_lobes_nf[dat_lobes_nf$C.fins!="Unknown",]
+dat_lobes_nf$Divers[dat_lobes_nf$Divers>1]<-1
+
+
+
+c_fins_nofeed<-ggplot(dat_lobes_nf, aes(x = C.fins, y = per_lobe, fill = C.fins)) +
+  geom_boxplot() +  # Add boxplot with custom styling
+  labs(
+    title = "Proportion of Time in Behavior State",
+    x = "Cephalic Fins Position",
+    y = "Proportion of Time in Behavior State",
+    fill = "Behavior"
+  ) +
+  theme_minimal() +
+  scale_fill_viridis_d(option = "mako") +  # Use the same color palette
+  theme(
+    text=element_text(size=30),
+    axis.text.x = element_text(angle = 0, hjust = 0.5),  # Rotate x-axis labels
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  # Style the title
+    legend.position = "none"  # Remove redundant legend
+  ) +
+  facet_wrap(~ Divers, scales = "free_y", ncol = 1,labeller = as_labeller(c(`0` = "Without Divers", `1` = "With Divers")))  # Facet by Divers
+
+
+print(c_fins_nofeed)
+
+ggsave("c_fins_NoFeed_Boxplot.jpg", plot = c_fins_nofeed, width = 8, height = 6, dpi = 300)
+
+
+aov_cephalic_nofeed <- aov(per_lobe ~ C.fins, data = dat_lobes_nf[dat_lobes_nf$Divers>0,])
+summary(aov_cephalic_nofeed)
+
+
+TukeyHSD(aov_cephalic_nofeed,"C.fins")
+
+
+#Cephalic fins by behaviors
+
+
+dat_lobes_b<-dat%>% group_by(MantaID)%>%           #Group by states
+  mutate(Length_seconds = max(Time_seconds))
+
+
+
+dat_lobes_b<-dat_lobes_b%>% group_by(MantaID,Divers,C.fins,Behavior)%>%
+  summarise(sec_lobe=n(),per_lobe=(sec_lobe/max(Length_seconds)))%>%
+  ungroup() %>%                                          #ungroup
+  complete(                                               #complete function
+    MantaID, Behavior,C.fins ,                     #by groups
+    fill = list(per_lobe = 0))%>%
+  group_by(MantaID)%>%                                    #add ethogram metadata to filled lines        
+  mutate(                                                    
+    Divers = first(Divers,na_rm=T)) 
+
+dat_lobes_b<-dat_lobes_b%>% group_by(MantaID,Divers,C.fins,Behavior)%>%summarise(sec_lobe=n(),per_lobe=(sec_lobe/max(Length_seconds)))
+
+
+dat_lobes_b<-dat_lobes_b[dat_lobes_b$C.fins!="Unknown",]
+dat_lobes_b$Divers[dat_lobes_b$Divers>1]<-1
+
+dat_lobes_bdivers<-dat_lobes_b[dat_lobes_b$Divers>0,]
+
+#with divers
+lobes_divers_behav<-ggplot(dat_lobes_bdivers, aes(x = Behavior, y = per_lobe, fill = Behavior)) +
+  geom_boxplot() +  # Add boxplot with custom styling
+  labs(
+    title = "Lobes Time Spent at Each Behavior with divers",
+    x = "Behavior",
+    y = "Proportion of Time in Behavior",
+    fill = "Behavior"
+  ) +
+  theme_minimal() +
+  scale_fill_viridis_d(option = "mako") +  # Use the same color palette
+  theme(
+    text=element_text(size=15),
+    axis.text.x = element_text(angle = 90, hjust = 1),  # Rotate x-axis labels
+    plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),  # Style the title
+    legend.position = "none"  # Remove redundant legend
+  ) +
+  facet_wrap(~ C.fins, scales = "free_y", ncol = 1)  # Facet by Divers
+
+
+print(lobes_divers_behav)
+
+ggsave("c_fins_BehavDivers_Boxplot.jpg", plot = lobes_divers_behav, width = 8, height = 6, dpi = 600)
+
+
+aov_lobes_bdivers_furled <- aov(per_lobe ~ Behavior, data = dat_lobes_bdivers[dat_lobes_bdivers$C.fins=="Furled",])
+summary(aov_lobes_bdivers_furled)
+
+
+TukeyHSD(aov_lobes_bdivers_furled,"Behavior")
+
+aov_lobes_bdivers_unfurled <- aov(per_lobe ~ Behavior, data = dat_lobes_bdivers[dat_lobes_bdivers$C.fins=="Unfurled",])
+summary(aov_lobes_bdivers_unfurled)
+
+
+TukeyHSD(aov_lobes_bdivers_unfurled,"Behavior")
+
+#No divers
+
+dat_lobes_bnodivers<-dat_lobes_b[dat_lobes_b$Divers<1,]
+
+#without divers
+lobes_nodivers_behav <-ggplot(dat_lobes_bnodivers, aes(x = Behavior, y = per_lobe, fill = Behavior)) +
+  geom_boxplot() +  # Add boxplot with custom styling
+  labs(
+    title = "Average Percentage of Time Spent at Each Behavior Without Divers",
+    x = "Behavior",
+    y = "Average Percentage of Time Spent",
+    fill = "Behavior"
+  ) +
+  theme_minimal() +
+  scale_fill_viridis_d(option = "mako") +  # Use the same color palette
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  # Style the title
+    legend.position = "none"  # Remove redundant legend
+  ) +
+  facet_wrap(~ C.fins, scales = "free_y", ncol = 1)  # Facet by Divers
+
+print(lobes_nodivers_behav)
+
+ggsave("c_fins_BehavNoDivers_Boxplot.jpg", plot = lobes_nodivers_behav, width = 8, height = 6, dpi = 300)
+
+
+aov_lobes_bnodivers_furled <- aov(per_lobe ~ Behavior, data = dat_lobes_bnodivers[dat_lobes_bnodivers$C.fins=="Furled",])
+summary(aov_lobes_bnodivers_furled)
+
+
+TukeyHSD(aov_lobes_bnodivers_furled,"Behavior")
+
+
+aov_lobes_bnodivers_unfurled <- aov(per_lobe ~ Behavior, data = dat_lobes_bnodivers[dat_lobes_bnodivers$C.fins=="Unfurled",])
+summary(aov_lobes_bnodivers_unfurled)
+
+
+TukeyHSD(aov_lobes_bnodivers_unfurled,"Behavior")
+
+
+
+## Wingflaps -----------------------------------------------------------
+
+#Boxplot Wingflap state
+
+dat_bx<-dat
+
+
+dat_bx$Divers[dat_bx$Divers>1] <-1
+
+wingbeat_states<-ggplot(dat_bx, aes(x = States, y = Wingflaps.second, fill = States)) +
+  geom_boxplot() +  # Add boxplot with custom styling
+  labs(
+    title = "Wingbeat per behavior state",
+    x = "Behavior State",
+    y = "Mean Wingbeat Per Second",
+    fill = "State"
+  ) +
+  theme_minimal() +
+  scale_fill_viridis_d(option = "mako") +  # Use the same color palette
+  theme(
+    text=element_text(size=20),
+    axis.text.x = element_text(angle = 0, hjust = 0.5),  # Rotate x-axis labels
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  # Style the title
+    legend.position = "none"  # Remove redundant legend
+  ) +
+  facet_wrap(~ Divers, scales = "free_y", ncol = 1,labeller = as_labeller(c(`0` = "Without Divers", `1` = "With Divers")))  # Facet by Divers
+
+print(wingbeat_states)
+
+ggsave("wingbeat_states.jpg", plot = wingbeat_states, width = 8, height = 6, dpi = 600)
+
+
+# Per state aov
+
+aov_wing_divers <- aov(Wingflaps.second ~ States, data = dat_bx[dat_bx$Divers>0,])
+summary(aov_wing_divers)
+
+TukeyHSD(aov_wing_divers,"States")
+
+aov_wing_nodivers <- aov(Wingflaps.second ~ States, data = dat_bx[dat_bx$Divers==0,])
+summary(aov_wing_nodivers)
+
+TukeyHSD(aov_wing_nodivers,"States")
+
+
+
+
+#Boxplot Wingflap Behavior
+
+wingbeat_behav<-ggplot(dat_bx, aes(x = Behavior, y = Wingflaps.second, fill = Behavior)) +
+  geom_boxplot() +  # Add boxplot with custom styling
+  labs(
+    title = "Wingbeat Per Behavior State",
+    x = "Behavior",
+    y = "Mean Wingbeat Per Second",
+    fill = "Behavior"
+  ) +
+  theme_minimal() +
+  scale_fill_viridis_d(option = "mako") +  # Use the same color palette
+  theme(
+    text=element_text(size=20),
+    axis.text.x = element_text(angle = 0, hjust = 0.5, size=10),  # Rotate x-axis labels
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  # Style the title
+    legend.position = "none"  # Remove redundant legend
+  ) +
+  facet_wrap(~ Divers, scales = "free_y", ncol = 1,labeller = as_labeller(c(`0` = "Without Divers", `1` = "With Divers")))  # Facet by Divers
+
+print(wingbeat_behav)
+
+ggsave("wingbeat_behav.jpg", plot = wingbeat_behav, width = 8, height = 6, dpi = 300)
+
+# Per behavior aov
+
+#divers
+aov_wing_bdivers <- aov(Wingflaps.second ~ Behavior, data = dat_bx[dat_bx$Divers>0,])
+summary(aov_wing_bdivers)
+
+
+TukeyHSD(aov_wing_bdivers,"Behavior")
+
+#divers
+aov_wing_bnodivers <- aov(Wingflaps.second ~ Behavior, data = dat_bx[dat_bx$Divers==0,])
+summary(aov_wing_bnodivers)
+
+
+TukeyHSD(aov_wing_bnodivers,"Behavior")
+
+
+
+# Transition Matrix Formating ---------------------------------------------
 
 #Create sorted vector 
 E <- sort(unique(dat$States))  
@@ -333,7 +955,7 @@ s3solver1<-function(matrix=NA){
 outBBsn<-s3solver(matrix=fitm)
 outBBsn1<-s3solver1(matrix=fitm)
 
-#Traveling 3 to avoidance 1
+#Neutral 3 to avoidance 1
 
 hist(outBBsn[1,1,])
 hist(outBBsn1[1,1,])
