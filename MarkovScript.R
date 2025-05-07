@@ -144,6 +144,16 @@ print(datsum)
 length(datsum$Divers[datsum$Divers==0]) #Number of ethograms without divers
 length(datsum$Divers[datsum$Divers>0]) #Ethograms with divers
 
+#Random selection of videos
+
+#No divers
+sample(unique(datsum$MantaID[datsum$Divers==0]),size=10)
+
+
+#With divers
+sample(unique(datsum$MantaID[datsum$Divers>0]),size=10)
+
+
 
 #Add second length by ethogram per behaviors and per states
 
@@ -260,11 +270,20 @@ summary(aov_behav_Nodiver)
 
 TukeyHSD(aov_behav_Nodiver,"Behavior")
 
+Tukey_behav_Nodiver<-as.data.frame(TukeyHSD(aov_behav_Nodiver,"Behavior")$Behavior, header=T)
+
+#Export
+write.csv(Tukey_behav_Nodiver,"TukeyBehavNodiver.csv",row.names = TRUE)
+
 # Signifficance with diver
 aov_behav_Diver <- aov(Per_behavior ~ Behavior, data = dat_behavior_bx[dat_behavior_bx$Divers==1,])
 summary(aov_behav_Diver)
 
 TukeyHSD(aov_behav_Diver,"Behavior")
+Tukey_behav_Diver<-as.data.frame(TukeyHSD(aov_behav_Diver,"Behavior")$Behavior, header=T)
+
+#Export
+write.csv(Tukey_behav_Diver,"TukeyBehavDiver.csv",row.names = TRUE)
 
 
 ## Percentage at each state ------------------------------------------------
@@ -435,16 +454,26 @@ ggsave("Individual_Manta_Divers_Boxplot.jpg", plot = Indv_Divers, width = 8, hei
 #test signiffice Avoidance
 summary(aov(Per_state ~ Individual, data = dat_divers_box[dat_divers_box$States=="Avoidance",]))
 TukeyHSD(aov(Per_state ~ Individual, data = dat_divers_box[dat_divers_box$States=="Avoidance",]))
+Tukey_ind_Diver_avoidance<-as.data.frame(TukeyHSD(aov(Per_state ~ Individual, data = dat_divers_box[dat_divers_box$States=="Avoidance",]))$Individual,header=T)
+
+Tukey_ind_Diver_avoidance[Tukey_ind_Diver_avoidance$`p adj`<0.05,]
 
 #test signiffice Feeding
 summary(aov(Per_state ~ Individual, data = dat_divers_box[dat_divers_box$States=="Feeding",]))
 TukeyHSD(aov(Per_state ~ Individual, data = dat_divers_box[dat_divers_box$States=="Feeding",]))
+Tukey_ind_Diver_Feeding<-as.data.frame(TukeyHSD(aov(Per_state ~ Individual, data = dat_divers_box[dat_divers_box$States=="Feeding",]))$Individual,header=T)
+
+Tukey_ind_Diver_Feeding[Tukey_ind_Diver_Feeding$`p adj`<0.05,]
+
 
 
 #test signiffice Neutral
 summary(aov(Per_state ~ Individual, data = dat_divers_box[dat_divers_box$States=="Neutral",]))
 TukeyHSD(aov(Per_state ~ Individual, data = dat_divers_box[dat_divers_box$States=="Neutral",]))
 
+Tukey_ind_Diver_Neutral<-as.data.frame(TukeyHSD(aov(Per_state ~ Individual, data = dat_divers_box[dat_divers_box$States=="Neutral",]))$Individual,header=T)
+
+Tukey_ind_Diver_Neutral[Tukey_ind_Diver_Neutral$`p adj`<0.05,]
 
 ## Cephalic fins -----------------------------------------------------------
 
@@ -495,7 +524,6 @@ summary(aov_cephalic_divers)
 
 aov_cephalic_divers <- aov(per_lobe ~ C.fins, data = dat_lobes_edit[dat_lobes_edit$Divers>0,])
 summary(aov_cephalic_divers)
-
 
 TukeyHSD(aov_cephalic_divers,"C.fins")
 
@@ -579,9 +607,6 @@ dat_lobes_b<-dat_lobes_b%>% group_by(MantaID,Divers,C.fins,Behavior)%>%
   mutate(                                                    
     Divers = first(Divers,na_rm=T)) 
 
-dat_lobes_b<-dat_lobes_b%>% group_by(MantaID,Divers,C.fins,Behavior)%>%summarise(sec_lobe=n(),per_lobe=(sec_lobe/max(Length_seconds)))
-
-
 dat_lobes_b<-dat_lobes_b[dat_lobes_b$C.fins!="Unknown",]
 dat_lobes_b$Divers[dat_lobes_b$Divers>1]<-1
 
@@ -615,14 +640,27 @@ ggsave("c_fins_BehavDivers_Boxplot.jpg", plot = lobes_divers_behav, width = 8, h
 aov_lobes_bdivers_furled <- aov(per_lobe ~ Behavior, data = dat_lobes_bdivers[dat_lobes_bdivers$C.fins=="Furled",])
 summary(aov_lobes_bdivers_furled)
 
-
 TukeyHSD(aov_lobes_bdivers_furled,"Behavior")
+Tukey_lobesf_Diver<-as.data.frame(TukeyHSD(aov_lobes_bdivers_furled,"Behavior")$Behavior, header=T)
+
+#Export
+write.csv(Tukey_lobesf_Diver,"TukeyLobesfDivers.csv",row.names = TRUE)
+
+
 
 aov_lobes_bdivers_unfurled <- aov(per_lobe ~ Behavior, data = dat_lobes_bdivers[dat_lobes_bdivers$C.fins=="Unfurled",])
 summary(aov_lobes_bdivers_unfurled)
 
 
 TukeyHSD(aov_lobes_bdivers_unfurled,"Behavior")
+
+Tukey_lobesu_Diver<-as.data.frame(TukeyHSD(aov_lobes_bdivers_unfurled,"Behavior")$Behavior, header=T)
+
+#Export
+write.csv(Tukey_lobesu_Diver,"TukeyLobesuDivers.csv",row.names = TRUE)
+
+
+
 
 #No divers
 
@@ -657,6 +695,11 @@ summary(aov_lobes_bnodivers_furled)
 
 TukeyHSD(aov_lobes_bnodivers_furled,"Behavior")
 
+Tukey_lobesf_Nodiver<-as.data.frame(TukeyHSD(aov_lobes_bnodivers_furled,"Behavior")$Behavior, header=T)
+
+#Export
+write.csv(Tukey_lobesf_Nodiver,"TukeyLobesfNodivers.csv",row.names = TRUE)
+
 
 aov_lobes_bnodivers_unfurled <- aov(per_lobe ~ Behavior, data = dat_lobes_bnodivers[dat_lobes_bnodivers$C.fins=="Unfurled",])
 summary(aov_lobes_bnodivers_unfurled)
@@ -664,11 +707,14 @@ summary(aov_lobes_bnodivers_unfurled)
 
 TukeyHSD(aov_lobes_bnodivers_unfurled,"Behavior")
 
+Tukey_lobesu_Nodiver<-as.data.frame(TukeyHSD(aov_lobes_bnodivers_unfurled,"Behavior")$Behavior, header=T)
 
+#Export
+write.csv(Tukey_lobesu_Nodiver,"TukeyLobesuNodivers.csv",row.names = TRUE)
 
-## Wingflaps -----------------------------------------------------------
+## Wingbeats -----------------------------------------------------------
 
-#Boxplot Wingflap state
+#Boxplot Wingbeat state
 
 dat_bx<-dat
 
@@ -739,20 +785,29 @@ ggsave("wingbeat_behav.jpg", plot = wingbeat_behav, width = 8, height = 6, dpi =
 
 # Per behavior aov
 
-#divers
+#With divers
 aov_wing_bdivers <- aov(Wingflaps.second ~ Behavior, data = dat_bx[dat_bx$Divers>0,])
 summary(aov_wing_bdivers)
 
 
 TukeyHSD(aov_wing_bdivers,"Behavior")
 
-#divers
+
+
+TukeyWingbeatDivers<-as.data.frame(
+  TukeyHSD(aov_wing_bdivers,"Behavior")$Behavior, header=T)
+write.csv(TukeyWingbeatDivers, "TukeyWingbeatPairedDiv.csv")
+
+#No divers
 aov_wing_bnodivers <- aov(Wingflaps.second ~ Behavior, data = dat_bx[dat_bx$Divers==0,])
 summary(aov_wing_bnodivers)
 
 
 TukeyHSD(aov_wing_bnodivers,"Behavior")
 
+TukeyWingbeat<-as.data.frame(
+  TukeyHSD(aov_wing_bnodivers,"Behavior")$Behavior, header=T)
+write.csv(TukeyWingbeat, "TukeyWingbeatPairedNodiv.csv")
 
 
 # Transition Matrix Formating ---------------------------------------------
