@@ -103,10 +103,9 @@ datsum_uncorrected<-dat %>%               #create object  from data
 length(datsum_uncorrected$Behavior[datsum_uncorrected$Behavior=="Resting"])
 
 
-# Define transition Probability matrices ----------------------------------
+# Define behavior states                  ----------------------------------
 
 
-#Define behavior states 
 
 names(dat)
 unique(dat$Behavior) #check behavior names in file
@@ -127,7 +126,7 @@ dat <- dat %>%
 
 # Data Exploration --------------------------------------------------------
 
-#Check subsample
+## Subsample and observer bias ---------------------------------------------
 
 #Import analyzed subsample
 subs_analyzed<- read.csv("SubsampleVideosEthograms_Analyzed.csv")
@@ -156,7 +155,8 @@ unique(subs_original$Behavior)== unique(subs_analyzed$Behavior)
 
 
 subs_analyzed$Behavior[subs_analyzed$Behavior=="Course Change"]<- "CourseChange"
-#add States to subsample
+
+#Add States to subsample
 
 subs_analyzed <- subs_analyzed %>%
   mutate(States = recode(Behavior, 
@@ -172,10 +172,10 @@ subs_analyzed <- subs_analyzed %>%
 length(subs_original$Behavior [subs_original$Behavior== subs_analyzed$Behavior])
 
 
-#percent
+#Percent of matched observations
 length(subs_original$Behavior [subs_original$Behavior== subs_analyzed$Behavior]) / length(subs_original$Behavior)
 
-#states
+#By State
 subs_analyzed[subs_original$States != subs_analyzed$States,]
 
 length(subs_analyzed$States[subs_original$States == subs_analyzed$States]) / length(subs_original$Behavior)
@@ -186,9 +186,10 @@ Differences<-subs_original[subs_original$Behavior!= subs_analyzed$Behavior,]
 Differences<-Differences%>%group_by(Behavior) %>%
   summarise(count=n())
 
+#Visualize
 print(Differences)
 
-#addressing feeding discrepancies
+#Proportion after Addressing feeding discrepancies
 
 515/706 #behaviors
 631/706 #states
@@ -205,6 +206,9 @@ datsum<-dat %>% group_by(MantaID)%>%                 #Group by Ethogram
 
 #Visualize
 print(datsum)
+
+
+## Data metrics and tidying ------------------------------------------------------------
 
 
 length(datsum$Divers[datsum$Divers==0]) #Number of ethograms without divers
@@ -715,6 +719,8 @@ summary(aov_behav_Nodiver)
 
 TukeyHSD(aov_states_Nodiver,"States")
 
+
+
 # Signifficance with diver
 aov_states_Diver <- aov(Per_state ~ States, data = dat_states_bx[dat_states_bx$Divers==1,])
 summary(aov_behav_Diver)
@@ -1146,6 +1152,45 @@ Tukey_lobesu_Nodiver<-as.data.frame(TukeyHSD(aov_lobes_bnodivers_unfurled,"Behav
 #Export
 write.csv(Tukey_lobesu_Nodiver,"TukeyLobesuNodivers.csv",row.names = TRUE)
 
+
+#Merged Barplot:
+
+dat_prop_div<-dat_prop
+dat_prop_div$Divers <- "Divers"
+
+dat_prop_nd$Divers<- "No Divers"
+
+dat_prop_cephalic<-rbind(dat_prop_div, dat_prop_nd)
+
+#ggplot
+
+  
+  
+  
+BarCephalic_merged<-ggplot(dat_prop_cephalic, aes(x = Behavior, y = prop, fill = C.fins)) +
+  geom_bar(stat = "identity", position = "fill", color="black") +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  labs(
+    title = "Lobes Time Spent at Each Behavior without Divers",
+    x = "Behavior",
+    y = "Proportion of Time ",
+    fill = "Cephalic Fin Position"
+  ) +
+  scale_fill_viridis_d(option = "mako", direction=1) +
+  theme_minimal() +
+  theme(
+    text=element_text(size=15),
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
+    legend.position = "top"
+  )+
+  facet_wrap(~Divers, ncol=1)
+
+
+BarCephalic_merged  
+
+ggsave("c_fins_Merged_Boxplot.jpg", plot = BarCephalic_merged  , width = 8, height = 10, dpi = 600)
+
 ## Wingbeats -----------------------------------------------------------
 
 #Boxplot Wingbeat state
@@ -1202,6 +1247,47 @@ print(wingbeat_states)
 
 ggsave("wingbeat_states.jpg", plot = wingbeat_states, width = 8, height = 6, dpi = 600)
 
+# Testing differences
+
+#Simple anova, ungruping. Signifficant difference
+x<-aov(Wingflaps.second ~ Divers, data = dat_bx)
+summary(x)
+
+#All data t--test = Signifficant difference
+t.test( Wingflaps.second ~ Divers, data=dat_bx)
+
+
+# Individual, paired t tests
+
+dat_individual_wingbeat<-dat_bx %>% 
+  group_by(Individual, MantaID,Divers) %>% #group
+  summarise( Mean_hz = mean(Wingflaps.second)) #get mean hz per individual
+
+
+dat_individual_wingbeat<-dat_individual_wingbeat %>% 
+  group_by(Individual, Divers)%>%
+  summarise (Mean_hz = mean(Mean_hz),
+             sample=n())
+
+#remove na
+dat_individual_wingbeat<- dat_individual_wingbeat[!is.na(dat_individual_wingbeat$Individual),]
+
+#Keep mantas with diver presense/absence only
+
+Indiv_prese_abs<-dat_individual_wingbeat%>%group_by(Individual)%>%
+  summarise(Identifier=n())
+
+dat_individual_wingbeat<-left_join(dat_individual_wingbeat,Indiv_prese_abs, by="Individual")
+
+#Final filter
+dat_individual_wingbeat<-dat_individual_wingbeat[dat_individual_wingbeat$Identifier>1,]
+
+
+#T test
+
+t.test(Mean_hz ~ Divers, data=dat_individual_wingbeat)
+
+t.test(dat_individual_wingbeat$Mean_hz[dat_individual_wingbeat$Divers==0] ,dat_individual_wingbeat$Mean_hz[dat_individual_wingbeat$Divers==1],paired=T, alternative = "two.sided")
 
 # Per state aov
 
@@ -1510,7 +1596,7 @@ write_csv(sumfit_sig, "BetaSignifficativeMantaDrone.csv")
 
 
 
-# plot --------------------------------------------------------------------
+# Ploting Makov results--------------------------------------------------------------------
 
 
 # TPM without divers
@@ -1624,7 +1710,7 @@ print(boxplot)
 #save
 ggsave("MarkovBoxplot_V1.jpg", plot = boxplot, width = 12, height = 8, dpi = 300)
 
-# CI plot -----------------------------------------------------------------
+# Dot plots and significant posteriors.  -----------------------------------------------------------------
 
 # Extract the beta estimates from models
 beta_summary <- summary(fit, pars = "beta")$summary
@@ -1688,7 +1774,7 @@ beta_df_sig <- beta_df %>%
 dotplot_prob_significant <- ggplot(beta_df_sig, aes(x = transition, y = probability, color = significant)) +
   geom_point(size = 3) +  # Dot plot instead of bar plot
   geom_errorbar(aes(ymin = 1 / (1 + exp(-upper_95ci)), ymax = 1 / (1 + exp(-lower_95ci))), width = 0.2) +
-  geom_vline(xintercept = c(1.5,5.5), linetype = "solid", color = "black") +
+  geom_vline(xintercept = c(4.5), linetype = "solid", color = "black") +
   scale_color_manual(values = c( "#357BA2FF")) +
   theme_minimal() +
   theme(
