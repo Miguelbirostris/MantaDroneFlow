@@ -137,12 +137,14 @@ dat <- dat %>%
 ## Subsample and observer bias ---------------------------------------------
 
 #Import analyzed subsample
-subs_analyzed<- read.csv("SubsampleVideosEthograms_Analyzed.csv")
+subs_analyzed<- read.csv("SubsampleVideosEthograms_Analyzed2.csv")
 #check IDs
 unique(subs_analyzed$MantaID)
 
 #Extract subsample from original dataset
 subs_original<-dat[dat$MantaID %in% subs_analyzed$MantaID, ]
+#Export original analyzed sample
+write.csv(subs_original,"SubsampleOriginalVideosEthograms_Analyzed.csv")
 
 #check lengths
 subs_original%>%group_by(MantaID)%>%
@@ -175,6 +177,9 @@ subs_analyzed <- subs_analyzed %>%
                          "Acceleration" = "Avoidance",
                          "Avoidance" = "Avoidance"))
 
+#extract
+write.csv(subs_analyzed,"SubsampleEditedlVideosEthograms_Analyzed2.csv")
+
 #Check percentage of identical behaviors 
 
 length(subs_original$Behavior [subs_original$Behavior== subs_analyzed$Behavior])
@@ -188,6 +193,13 @@ subs_analyzed[subs_original$States != subs_analyzed$States,]
 
 length(subs_analyzed$States[subs_original$States == subs_analyzed$States]) / length(subs_original$Behavior)
 
+
+#Vector of differences
+
+Diff_vector<-as.data.frame(subs_original$Behavior!= subs_analyzed$Behavior)
+
+write.csv(Diff_vector,"diff_vector2.csv")
+
 #check were differences occured
 Differences<-subs_original[subs_original$Behavior!= subs_analyzed$Behavior,]
 
@@ -196,11 +208,6 @@ Differences<-Differences%>%group_by(Behavior) %>%
 
 #Visualize
 print(Differences)
-
-#Proportion after Addressing feeding discrepancies
-
-515/706 #behaviors
-631/706 #states
 
 
 #Unique Ethograms
@@ -606,6 +613,10 @@ print(Pie_Behavior)
 
 ggsave("Pie_Behavior.jpg", plot = Pie_Behavior, width = 8, height = 6, dpi = 300)
 
+summary(average_behavior)
+
+class(average_behavior)
+write.table(average_behavior,"behavior_proportion.csv")
 
 ## Percentage at each state ------------------------------------------------
 
@@ -838,29 +849,7 @@ ggsave("Individual_Manta_Divers_Boxplot.jpg", plot = Indv_Divers, width = 8, hei
 
 dat_divers_box$MeanState<- mean(dat_divers_box$Per_state[dat_divers_box$States=="Avoidance"])
 
-
-
 sd(dat_divers_box$Per_state)
-
-
-
-Indv_Divers_avoidance<-ggplot(dat_divers_box[dat_divers_box$States=="Avoidance",], aes(x = Individual, y = Per_state, fill = Individual)) +
-  geom_boxplot() +
-    labs(title = "Percentage of Time Spent at Each State per Individual Manta",
-       x = "Manta ID",
-       y = "Proportion of Time Spent in Behavior State"
-       ) +
-  theme_minimal() +
-  scale_fill_viridis_d(option = "mako") +
-  theme(text=element_text(size=20),
-        axis.text.x = element_text(angle = 0, hjust = 1,size=15),
-        legend.position = "none"
-        )# Position the legend)
-
-print(Indv_Divers_avoidance)
-
-ggsave("Individual_Manta_Avoidance_Divers_Boxplot.jpg", plot = Indv_Divers_avoidance, width = 12, height = 6, dpi = 300)
-
 
 
 #test signiffice Avoidance
@@ -869,7 +858,50 @@ TukeyHSD(aov(Per_state ~ Individual, data = dat_divers_box[dat_divers_box$States
 
 Tukey_ind_Diver_avoidance<-as.data.frame(TukeyHSD(aov(Per_state ~ Individual, data = dat_divers_box[dat_divers_box$States=="Avoidance",]))$Individual,header=T)
 
+#specific mantas with different proportion at avoidance
 Tukey_ind_Diver_avoidance[Tukey_ind_Diver_avoidance$`p adj`<0.05,]
+
+
+#Create separate dataframe for avoidant mantas
+Ind_avoidance_df <- dat_divers_box %>%
+  filter(States == "Avoidance") %>%                      #select avoidance only
+  mutate(
+    Nature = case_when(
+      Individual %in% c(168, 185) ~ "Higher avoidance", #higher
+      Individual %in% c(174, 186, 188, 198) ~ "Lower avoidance",  #lower
+      TRUE ~ "Average avoidance"                         #average
+    )
+  )
+
+
+
+Ind_avoidance_df%>%group_by(Individual)%>%
+  summarise(MeanAvoidance=mean(Per_state))
+
+#Tag individual as more avoidant or less avoidant
+
+
+
+Indv_Divers_avoidance<-ggplot(Ind_avoidance_df, aes(x = Individual, y = Per_state, fill = Nature)) +
+  geom_boxplot() +
+  labs(title = "Percentage of Time Spent at Each State per Individual Manta",
+       x = "Manta ID",
+       y = "Proportion of Time in Avoidance"
+  ) +
+  theme_minimal() +
+  scale_fill_viridis_d(option = "mako", begin=0 ) +
+  theme(text=element_text(size=20),
+        axis.text.x = element_text(angle = 0, hjust = 1,size=15),
+        legend.position = "bottom"# Position the legend)
+  )+
+  geom_hline( aes(yintercept = MeanState), linetype = "dashed", color = "black", linewidth = 0.9) #Mean dashed line
+
+print(Indv_Divers_avoidance)
+
+ggsave("Individual_Manta_Avoidance_Divers_Boxplot_v2.jpg", plot = Indv_Divers_avoidance, width = 12, height = 6, dpi = 300)
+
+
+
 
 #test signiffice Feeding
 summary(aov(Per_state ~ Individual, data = dat_divers_box[dat_divers_box$States=="Feeding",]))
